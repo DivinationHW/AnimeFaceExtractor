@@ -1,6 +1,6 @@
 # Anime Character Extractor
 
-Anime Character Extractor 是一个强大的Python工具，能够从动画视频中自动提取人物图像。
+Anime Character Extractor 是一个的Python工具，能够从动画视频中自动提取人物图像。
 
 ## 功能特性
 
