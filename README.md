@@ -45,3 +45,5 @@ Anime Character Extractor 是一个用于从动画视频中提取人物的Python
 ## 许可证
 
 此项目基于GNU General Public License v3.0许可证。
+
+## It's the only NEET thing to do.
