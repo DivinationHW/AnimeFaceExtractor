@@ -1,5 +1,7 @@
 # Anime Character Extractor
 
+![image](https://github.com/DivinationHW/AnimeFaceExtractor/blob/main/Yuuko.jpg)
+
 Anime Character Extractor 是一个用于从动画视频中提取人物的Python工具。我们借鉴了各种开源库和方法的优点，通过使用OpenCV库进行人脸检测，然后从每一帧中提取人物。
 
 ## 功能特性
