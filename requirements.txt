@@ -1,0 +1,6 @@
+opencv-python
+numpy
+tqdm
+Pillow
+imagehash
+scikit-learn
