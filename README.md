@@ -38,4 +38,8 @@ Anime Character Extractor 是一个用于从动画视频中提取人物的Python
 
 ## 致谢
 
-我们要感谢所有为这个项目的成功做出贡献的人。特别是OpenCV、NumPy、PIL、imagehash 和 tqdm这些库的开发者，没有他们的辛勤工作和创新，这个项目就无法成为可能。
+我们要感谢所有为这个项目的成功做出贡献的人。特别是OpenCV、NumPy、PIL、imagehash 和 tqdm这些库的开发者，没有他们的辛勤工作和创新，这个项目就无法成为可能。我们也要特别感谢 [nagadomi](https://github.com/nagadomi/lbpcascade_animeface) 的 'lbpcascade_animeface.xml' 级联分类器项目，它对我们的工作起到了重要的推动作用。
+
+## 许可证
+
+此项目基于MIT许可证。
