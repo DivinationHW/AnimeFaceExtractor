@@ -1,6 +1,6 @@
 # Anime Character Extractor
 
-Anime Character Extractor 是一个的Python工具，能够从动画视频中自动提取人物图像。
+Anime Character Extractor 是一个用于从动画视频中提取人物的Python工具。我们借鉴了各种开源库和方法的优点，通过使用OpenCV库进行人脸检测，然后从每一帧中提取人物。
 
 ## 功能特性
 
@@ -11,6 +11,8 @@ Anime Character Extractor 是一个的Python工具，能够从动画视频中自
    - 使用图像哈希比较，跳过相似的帧
 3. **关键帧提取**：如果需要，可以只在视频的关键帧上进行处理。
 4. **质量控制**：可以配置输出图像的JPEG质量。
+
+虽然我们已经努力提高这个工具的效果，但我们相信还有许多可以改进和优化的地方。
 
 ## 快速开始
 
@@ -33,3 +35,7 @@ Anime Character Extractor 是一个的Python工具，能够从动画视频中自
 - **级联分类器路径**：用于人脸检测的级联分类器文件的路径。默认为 'lbpcascade_animeface.xml'。
 - **输出图像的JPEG质量**：生成的人物图像的JPEG质量，范围为 0-100。默认为 90。
 - **人脸检测模式**：选择一个模式进行人脸检测。默认为 0。
+
+## 致谢
+
+我们要感谢所有为这个项目的成功做出贡献的人。特别是OpenCV、NumPy、PIL、imagehash 和 tqdm这些库的开发者，没有他们的辛勤工作和创新，这个项目就无法成为可能。
