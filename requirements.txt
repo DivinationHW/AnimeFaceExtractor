@@ -1,6 +1,6 @@
 opencv-python
 numpy
 tqdm
-Pillow
+pillow
 imagehash
 scikit-learn
