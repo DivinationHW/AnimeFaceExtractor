@@ -1,4 +1,4 @@
-# Anime Character Extractor
+# Anime Character Extractor 仍在施工
 
 ![image](https://github.com/DivinationHW/AnimeFaceExtractor/blob/main/Yuuko.jpg)
 PS：本来单纯拿来扒紫苑寺有子动画里的镜头炼丹用的，想了想完善了一下放到Github水一水。
