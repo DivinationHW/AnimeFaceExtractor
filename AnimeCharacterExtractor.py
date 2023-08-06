@@ -1,152 +1,118 @@
-import cv2
 import os
-import numpy as np
-import subprocess
-import shutil
-from tqdm import tqdm
+import cv2
 from PIL import Image
 import imagehash
-from time import time
-from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
+import time
 
-def process_video(VIDEO_PATH, TEMP_FOLDER, OUTPUT_FOLDER):
-    face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
-    frame_id = 0
-    skip_counter = 0
-    last_hash = None
-    last_vector = None
+# 用户交互输入参数
+def get_user_input(prompt, default_value):
+    user_input = input(f"{prompt} (默认: {default_value}): ")
+    return user_input.strip() if user_input else default_value
 
-    if USE_FFMPEG == 1:
-        if not os.path.exists(TEMP_FOLDER):
-            os.makedirs(TEMP_FOLDER)
+# 输入参数
+input_path = get_user_input("请输入动漫视频文件或文件夹路径", "demo.mkv")
+difference_threshold = int(get_user_input("请输入调整帧差别大小的阈值，范围0~20，回车默认10", "10"))
+output_frames_directory = get_user_input("请输入输出帧序列的文件夹名称", "output_frames")
+enable_face_detection = get_user_input("是否启用人脸检测? (0=关闭/1=开启)", "0") == "1"
 
-        command = f'ffmpeg -i "{VIDEO_PATH}" -vf "select=eq(pict_type\\,I)" -vsync vfr -q:v 2 "{TEMP_FOLDER}/keyframe_%03d.png"'
-        subprocess.call(command, shell=True)
+if enable_face_detection:
+    print("提醒: 这个人脸检测器不一定准确，（动漫脸检测谁来谁麻）。建议直接查看减少重复帧后的输出图片文件夹。")
+    face_recognition_thickness = int(get_user_input("请输入人脸识别红框的粗细，可用10这个粗细程度来检查为啥级联分类器觉得这张有人脸（设置为0表示禁用红框）", "0"))
+    output_faces_directory = get_user_input("请输入输出人脸的文件夹名称", "detected_faces")
+else:
+    face_recognition_thickness = None
+    output_faces_directory = None
 
-        keyframes = sorted(os.listdir(TEMP_FOLDER))
-        pbar = tqdm(total=len(keyframes), desc='处理帧中')
+# 计算两个帧之间的差异哈希
+def calculate_frame_difference(frame1, frame2):
+    hash1 = imagehash.average_hash(Image.fromarray(frame1))
+    hash2 = imagehash.average_hash(Image.fromarray(frame2))
+    return hash1 - hash2
 
-        for keyframe in keyframes:
-            frame = cv2.imread(os.path.join(TEMP_FOLDER, keyframe))
-            if frame is None:
-                break
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray)
-
-            if len(faces) > 0:
-                if DETECTION_MODE == 0:
-                    if skip_counter > 0:
-                        skip_counter -= 1
-                        continue
-                    skip_counter = SKIP_FRAMES
-                elif DETECTION_MODE == 1:
-                    vector = np.array(frame).flatten()
-                    if last_vector is not None and cosine_similarity([vector], [last_vector])[0][0] > COSINE_THRESHOLD:
-                        continue
-                    last_vector = vector
-                elif DETECTION_MODE == 2:
-                    hash = imagehash.phash(Image.fromarray(frame))
-                    if last_hash is not None and abs(hash - last_hash) < HASH_DIFF_THRESHOLD:
-                        continue
-                    last_hash = hash
-
-                if DRAW_RED_BOX == 1:
-                    for (x, y, w, h) in faces:
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), RED_BOX_THICKNESS)
-
-                cv2.imwrite(os.path.join(OUTPUT_FOLDER, f'output_frame_{frame_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-                frame_id += 1
-
-            pbar.update(1)
-
-        if KEEP_TEMP_FOLDER == 0:
-            shutil.rmtree(TEMP_FOLDER)
-
-        pbar.close()
-
+# 处理输入路径下的视频文件或文件夹
+def compact_video(input_path, threshold=10, face_detection=True, recognition_thickness=2):
+    if os.path.isdir(input_path):  # 输入路径是文件夹
+        for file in tqdm(os.listdir(input_path), desc="处理文件夹中的视频文件"):
+            if file.lower().endswith((".mkv", ".mp4", ".avi")):
+                input_file = os.path.join(input_path, file)
+                output_frames_dir = os.path.join(output_frames_directory, os.path.splitext(file)[0])
+                output_faces_dir = os.path.join(output_faces_directory, os.path.splitext(file)[0] + "_faces")
+                compact_video_file(input_file, output_frames_dir, threshold, face_detection, recognition_thickness, output_faces_dir)
+    elif os.path.isfile(input_path):  # 输入路径是单个视频文件
+        output_frames_dir = os.path.join(output_frames_directory, os.path.splitext(os.path.basename(input_path))[0])
+        output_faces_dir = os.path.join(output_faces_directory, os.path.splitext(os.path.basename(input_path))[0] + "_faces")
+        compact_video_file(input_path, output_frames_dir, threshold, face_detection, recognition_thickness, output_faces_dir)
     else:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        cap.release()
+        print("输入路径不是有效的文件或文件夹路径")
 
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        if not cap.isOpened():
-            print(f'无法打开视频：{VIDEO_PATH}')
-            exit()
+# 处理单个视频文件
+def compact_video_file(input_file, output_frames_directory, threshold=10, face_detection=True, recognition_thickness=2, output_faces_directory=None):
+    if not os.path.isfile(input_file):
+        raise FileNotFoundError("输入文件不存在")
 
-        pbar = tqdm(total=total_frames, desc='处理帧中')
+    cap = cv2.VideoCapture(input_file)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    _, prev_frame = cap.read()
+    frame_count = 1
 
+    if not os.path.exists(output_frames_directory):
+        os.makedirs(output_frames_directory)
+
+    with tqdm(total=total_frames, desc="处理视频帧") as pbar:
         while True:
-            ret, frame = cap.read()
+            ret, curr_frame = cap.read()
             if not ret:
                 break
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray)
+            if threshold == 0:
+                frame_filename = os.path.join(output_frames_directory, f"frame_{frame_count:04d}.png")
+                cv2.imwrite(frame_filename, curr_frame)
+            else:
+                diff = calculate_frame_difference(prev_frame, curr_frame)
+                if diff > threshold:
+                    frame_filename = os.path.join(output_frames_directory, f"frame_{frame_count:04d}.png")
+                    cv2.imwrite(frame_filename, curr_frame)
 
-            if len(faces) > 0:
-                if DETECTION_MODE == 0:
-                    if skip_counter > 0:
-                        skip_counter -= 1
-                        continue
-                    skip_counter = SKIP_FRAMES
-                elif DETECTION_MODE == 1:
-                    vector = np.array(frame).flatten()
-                    if last_vector is not None and cosine_similarity([vector], [last_vector])[0][0] > COSINE_THRESHOLD:
-                        continue
-                    last_vector = vector
-                elif DETECTION_MODE == 2:
-                    hash = imagehash.phash(Image.fromarray(frame))
-                    if last_hash is not None and abs(hash - last_hash) < HASH_DIFF_THRESHOLD:
-                        continue
-                    last_hash = hash
-
-                if DRAW_RED_BOX == 1:
-                    for (x, y, w, h) in faces:
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), RED_BOX_THICKNESS)
-
-                cv2.imwrite(os.path.join(OUTPUT_FOLDER, f'output_frame_{frame_id}.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-                frame_id += 1
-
+            prev_frame = curr_frame
+            frame_count += 1
             pbar.update(1)
 
-        cap.release()
-        pbar.close()
+    cap.release()
 
-INPUT_PATH = input('请输入视频文件或文件夹的路径（如："demo.mkv"或"videos_folder"，回车使用默认参数："demo.mkv"）：') or 'demo.mkv'
-OUTPUT_FOLDER = input('请输入输出文件夹路径（如："output"，回车使用默认参数："output"）：') or 'output'
-CASCADE_PATH = input('请输入级联分类器的路径（用于人脸检测，回车使用默认参数："lbpcascade_animeface.xml"）：') or 'lbpcascade_animeface.xml'
-JPEG_QUALITY = int(input('请输入输出图像的JPEG质量（0-100，数字越大，输出图像质量越高，文件大小也会增加。回车使用默认参数：100）：') or 100)
-DETECTION_MODE = int(input('请输入人脸检测模式（0：直接在每一帧上进行人脸检测；1：计算余弦相似度，跳过相似的帧；2：使用图像哈希比较，跳过相似的帧。回车使用默认参数：0）：') or 0)
-USE_FFMPEG = int(input('是否使用ffmpeg提取关键帧进行人脸检测（0：否，1：是。使用关键帧可以减少处理时间，若有ffmpeg环境，建议开启，下载地址：https://www.ffmpeg.org/。回车使用默认参数：0）：') or 0)
-DRAW_RED_BOX = int(input('是否在检测到的人像上画红色方框（0：否，1：是。若你觉得，啊？这图片哪来的人脸，可以尝试打开此项看看级联分类器是如何识别人脸的。回车使用默认参数：0）：') or 0)
-RED_BOX_THICKNESS = int(input('请输入红色方框的粗细（仅当上一项为1时有效，回车使用默认参数：10）：') or 10)
+    if face_detection and output_faces_directory:
+        for frame_file in tqdm(os.listdir(output_frames_directory), desc="检测并绘制人脸"):
+            full_frame_path = os.path.join(output_frames_directory, frame_file)
+            detect_and_draw_faces(full_frame_path, recognition_thickness, output_faces_directory)
 
-if DETECTION_MODE == 0:
-    SKIP_FRAMES = int(input('请输入在检测到人脸后要跳过的帧数（此参数用于在检测到人脸后跳过指定数量的帧，减少处理时间，若开启ffmpeg关键帧抓取，建议使用默认参数。回车使用默认参数：0）：') or 0)
-elif DETECTION_MODE == 1:
-    COSINE_THRESHOLD = float(input('请为检测模式1输入余弦相似度阈值（此参数用于判断连续帧之间的相似度，如果相似度高于此值，则跳过帧。值越接近1，相似度要求越严格。回车使用默认参数：0.95）：') or 0.95)
-elif DETECTION_MODE == 2:
-    HASH_DIFF_THRESHOLD = int(input('请为检测模式2输入哈希差异阈值（此参数用于判断连续帧之间的哈希差异，如果差异小于此值，则跳过帧。值越小，相似度要求越严格。回车使用默认参数：5）：') or 5)
+# 检测并绘制人脸红框
+def detect_and_draw_faces(image_file, recognition_thickness=2, output_faces_directory=None, cascade_file="lbpcascade_animeface.xml"):
+    if not os.path.isfile(image_file):
+        raise FileNotFoundError("输入图片不存在")
 
-KEEP_TEMP_FOLDER = int(input(f'是否在任务执行后保留关键帧临时文件夹（0：否，1：是。回车使用默认参数：0）：') or 0)
+    if not os.path.isfile(cascade_file):
+        raise RuntimeError("人脸检测器文件不存在")
 
-timestamp = int(time())
-TEMP_ROOT_FOLDER = f"temp_keyframes_{timestamp}"
+    cascade = cv2.CascadeClassifier(cascade_file)
+    image = cv2.imread(image_file, cv2.IMREAD_COLOR)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
 
-if os.path.isdir(INPUT_PATH):
-    videos = [os.path.join(INPUT_PATH, f) for f in os.listdir(INPUT_PATH) if f.endswith(('.mp4', '.mkv', '.avi', '.flv', '.wmv', '.mov', '.mpeg', '.webm'))]
-    for video_path in videos:
-        video_name = os.path.splitext(os.path.basename(video_path))[0]
-        TEMP_FOLDER = os.path.join(TEMP_ROOT_FOLDER, video_name)
-        video_output_folder = os.path.join(OUTPUT_FOLDER, video_name)
-        if not os.path.exists(video_output_folder):
-            os.makedirs(video_output_folder)
-        process_video(video_path, TEMP_FOLDER, video_output_folder)
-else:
-    TEMP_FOLDER = os.path.join(TEMP_ROOT_FOLDER, os.path.splitext(os.path.basename(INPUT_PATH))[0])
-    process_video(INPUT_PATH, TEMP_FOLDER, OUTPUT_FOLDER)
+    faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(24, 24))
 
-if KEEP_TEMP_FOLDER == 0:
-    shutil.rmtree(TEMP_ROOT_FOLDER)
+    if len(faces) > 0:  # 仅当检测到人脸时保存图像
+        for i, (x, y, w, h) in enumerate(faces):
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), recognition_thickness)
+
+        if output_faces_directory:
+            if not os.path.exists(output_faces_directory):
+                os.makedirs(output_faces_directory)
+            output_file = os.path.join(output_faces_directory, os.path.basename(image_file))
+            cv2.imwrite(output_file, image)
+
+if __name__ == "__main__":
+    start_time = time.time()
+    compact_video(input_path, difference_threshold, enable_face_detection, face_recognition_thickness)
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f"\n整个程序的运行时间: {total_time:.2f} 秒")
